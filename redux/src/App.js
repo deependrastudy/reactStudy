@@ -10,6 +10,7 @@ function App() {
       <IcecreamReducer /> 
       <HooksContainer />
       <CakeContainer />
+      <h1>My Changes more</h1>
     </div>
     </Provider>
   );
