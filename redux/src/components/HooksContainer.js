@@ -8,7 +8,7 @@ export const HooksContainer = () => {
     return (
         <div>
             <input type="text" value={number} onChange={(e)=>{setNumber(e.target.value)}} />
-            <p>No Of Cakes : {noOfCakes}</p>
+            <p>No Of Cakes 1 : {noOfCakes}</p>
             <button onClick={()=>dispatch(buyCake(number))}>Buy Cake</button>
         </div>
     )
