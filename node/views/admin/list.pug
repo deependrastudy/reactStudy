@@ -1,0 +1,15 @@
+extends ../layouts/admin/app.pug
+block contant
+            h2 List Here 
+            table.userslist
+                tr
+                    td Name
+                    td Email 
+                if items.length>0
+                    each item in items
+                        tr
+                            td #{item.name}
+                            td #{item.email}
+                else 
+                    tr
+                        td(colspan="2")  Not Found

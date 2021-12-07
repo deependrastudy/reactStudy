@@ -1,0 +1,49 @@
+# AWS account ID of the environment
+account-id: 571361038237
+
+
+# Log Retention days in Cloudwatch
+log-retention: 30
+
+#Security groups for the functions
+securityGroupIds:
+  - sg-00af9238bc5cc288c
+
+#VPC APP subnet under which function should run
+subnetIds:
+  - subnet-0682415011567d598
+  - subnet-08e12b37df37c2ce1
+
+restApiId: 17h1ur50y5
+
+restApiRootResourceId: solsn2aoui
+
+#restApiResourceID: 5va5wu
+
+#stylenameRestApiResourceID: 1n89ak
+
+#versionRestApiResourceID: zaiukb
+
+#envRestApiResourceID: ovrx82
+
+# All environment variables should go in here
+# Standard fields  
+#   - CTP-ENV	
+#  - CTP-REGION
+#  - LOGGER_LEVEL
+# Optional fields
+#  - CTP-APP-SECRET
+# All app specific env variables can go here e.g. TOMTOM_ENDPOINT
+env-vars:
+  APP_ENVIRONMENT: stg03
+  REGION: us-east-1
+  LOGGER_LEVEL: debug
+  CLOUD_WATCH_LOG_GROUP_NAME : /aws/lambda/stg03-us-east-1-navi-mapbox-service-audit
+  MAPBOX_ENDPOINT: https://api.mapbox.com/tokens/v2/
+  MAPBOX_ACCOUNT_TABLE : stg03-global-navi-admin-mapbox-account
+  MAP_STYLE_INFO_TABLE : stg03-global-navi-admin-map-style-info
+  MAPBOX_STYLE_ENDPOINT : https://api.mapbox.com/styles/v1/
+  MAPBOX_FONTS_ENDPOINT : https://api.mapbox.com/fonts/v1/
+  MAP_STYLE_VERSIONS_S3_CUCKET : ctp21-stg03-us-east-1-navi-adminportal-map-style
+  JOB_STATUS_LAMBDA_ARN : arn:aws:lambda:us-east-1:571361038237:function:stg03-us-east-1-navi-admin-job-status-updateJobStatus
+  GET_MAPBOX_ACCOUNTS_FUNCTION_NAME : stg03-us-east-1-navi-admin-mapbox-account-getMapboxAccounts

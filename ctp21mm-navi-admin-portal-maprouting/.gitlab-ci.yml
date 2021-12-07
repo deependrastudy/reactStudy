@@ -1,0 +1,863 @@
+variables:
+  ##AWS Account IDs saved as group level variables
+  PROD_ACCOUNT: $PROD_AWS_ACCOUNTID #12-digit account ID for your production AWS environment
+  STAGING_ACCOUNT: $STG_AWS_ACCOUNTID #12-digit account ID for your staging AWS environment
+  DEV_ACCOUNT: $DEV_AWS_ACCOUNTID #12-digit account ID for your dev AWS environment
+  QA_ACCOUNT: $QA_AWS_ACCOUNTID #12-digit account ID for your dev AWS environment
+  AWS_ACCESS_KEY_ID: "$DEVOPS_AWS_KEY_ID"
+  AWS_SECRET_ACCESS_KEY: "$DEVOPS_AWS_KEY_SECRET"
+  ##Regions
+  DEV_REGION: us-west-2 #Deployment AWS region for your development environment
+  QA_REGION: us-west-2 #Deployment AWS region for your development environment
+  STG_REGION: us-west-2 #Deployment AWS region for your staging environment
+  PROD_REGION: us-west-2 #Deployment AWS region for your production environment
+  DEPLOYMENT_ROLE_NAME: gitlab-ci-deployment
+  #Modify below variables
+  #ENV_DEPLOY: dev01
+  APP_NAME: ctp21mm-navi-admin-capacity-management
+  LAMBDA_VERSION: $LAMBDA_VERSION
+  #Sonar Configuration
+  JWT: $CI_JOB_JWT
+  VAULT_ADDR: "https://vault.toyotaconnected.net/"
+
+  
+
+.dev_variables: &dev_variables
+  STAGE: develop
+  ENV_DEPLOY: dev03
+  DEV_ACCOUNT: "$DEV_AWS_ACCOUNTID"
+  DEPLOYMENT_ROLE: "arn:aws:iam::${DEV_AWS_ACCOUNTID}:role/${DEPLOYMENT_ROLE_NAME}"
+  REGION: ${DEV_REGION}
+  VAULT_NAMESPACE: "tmna-ct/development/navi"
+  VAULT_GITLAB_JWT_ROLE: "gitlab_ci_dev"
+  VAULT_GITLAB_ROLE: "aws-21mm-dev/creds/gitlab_ci_awsdev"
+
+
+.qa_variables: &qa_variables
+  STAGE: qa
+  ENV_DEPLOY: qa03
+  QA_ACCOUNT: "$QA_AWS_ACCOUNTID"
+  DEPLOYMENT_ROLE: "arn:aws:iam::${QA_AWS_ACCOUNTID}:role/${DEPLOYMENT_ROLE_NAME}"
+  REGION: ${QA_REGION}
+  VAULT_NAMESPACE: "tmna-ct/qa/navi"
+  VAULT_GITLAB_JWT_ROLE: "gitlab_ci_qa"
+  VAULT_GITLAB_ROLE: "aws-21mm-qa/creds/gitlab_ci_awsqa"
+
+
+.staging_variables: &staging_variables
+  STAGE: staging
+  ENV_DEPLOY: stg03
+  STAGING_ACCOUNT: "$STG_AWS_ACCOUNTID"
+  DEPLOYMENT_ROLE: "arn:aws:iam::${STG_AWS_ACCOUNTID}:role/${DEPLOYMENT_ROLE_NAME}"
+  REGION: ${STG_REGION}
+  VAULT_NAMESPACE: "tmna-ct/stg/navi"
+  VAULT_GITLAB_JWT_ROLE: "gitlab_ci_stg"
+  VAULT_GITLAB_ROLE: "aws-21mm-stg/creds/gitlab_ci_awsstg"
+
+
+.prod_variables: &prod_variables
+  STAGE: prod
+  ENV_DEPLOY: prod
+  PROD_ACCOUNT: "$PROD_AWS_ACCOUNTID"
+  DEPLOYMENT_ROLE: "arn:aws:iam::${PROD_AWS_ACCOUNTID}:role/${DEPLOYMENT_ROLE_NAME}"
+  REGION: ${PROD_REGION}
+  VAULT_NAMESPACE: "$PROD_VAULT_NAMESPACE"
+  VAULT_GITLAB_JWT_ROLE: "$PROD_VAULT_GITLAB_JWT_ROLE"
+  VAULT_GITLAB_ROLE: "$PROD_VAULT_GITLAB_ROLE"
+
+
+.package_variables: &package_variables
+  REGION: us-west-2
+
+  
+#cache:
+  #key: ${CI_COMMIT_REF_NAME}
+  #untracked: true
+
+stages:
+  - validate
+  - deploy-dev-green
+  - sanity-dev-green
+  - deploy-dev-blue
+  - sanity-dev-blue
+  - smoke-dev
+  - rollback-dev
+  - deploy-qa-green
+  - sanity-qa-green
+  - deploy-qa-blue
+  - sanity-qa-blue
+  - smoke-qa
+  - rollback-qa
+  - deploy-stg-green
+  - sanity-stg-green
+  - deploy-stg-blue
+  - sanity-stg-blue
+  - smoke-stg
+  - rollback-stg
+  - deploy-prod-green
+  - sanity-prod-green
+  - deploy-prod-blue
+  - sanity-prod-blue
+  - smoke-prod
+  - rollback-prod
+
+.sanity_script: &sanity_script
+  script: |
+    echo "Start Component Sanity Test"
+
+.smoke_script: &smoke_script
+  script: |
+    echo "Start SMOKE Test"
+
+
+.rollback_script: &rollback_script
+  script: |
+    echo "Test Failed! Start Rollback"
+    
+.deploy_script: &deploy_script
+  script: |
+    echo "===== Get Lambda Version  ====="
+    if [ -z "$LAMBDA_VERSION" ]
+    then
+        version=$(node -p "require('./package.json').version")
+    else
+        version=$LAMBDA_VERSION
+    fi
+    echo "Lambda Version is: $version"
+    ls -ltr
+    
+    echo "===== Install Serverless Plugin ====="
+    npm i @types/aws-lambda --save-dev
+    npm install ts-node --save-dev
+    npm install typescript --save-dev
+    npm install --save serverless-cloudflare-workers
+    npm install serverless-deployment-bucket --save-dev    
+    npm install webpack --save-dev
+    npm install serverless-webpack --save-dev
+    npm install serverless-offline --save-dev
+    npm install serverless-plugin-log-retention --save-dev
+    npm install serverless-plugin-tracing --save-dev
+    npm install serverless-prune-plugin --save-dev
+    npm install serverless-plugin-typescript --save-dev
+    serverless --version
+    npm install
+    cat ./package.json
+    ls -ltr
+    
+    export VAULT_ADDR=${VAULT_ADDR}
+    # set vault namespace
+    export VAULT_NAMESPACE=${VAULT_NAMESPACE}
+    # Authenticate and get token
+    export VAULT_TOKEN="$(vault write -field=token auth/jwt/login role=${VAULT_GITLAB_JWT_ROLE} jwt=$CI_JOB_JWT)"
+    echo $CI_JOB_JWT
+    # Use VAULT_TOKEN to read the secret and store it in environment variable
+    echo "print vault token"
+    creds=$(vault read ${VAULT_GITLAB_ROLE})
+    echo "$creds"
+    export AWS_ACCESS_KEY_ID=$(echo "$creds" | grep access_key | awk '{print $2}')
+    export AWS_SECRET_ACCESS_KEY=$(echo "$creds" | grep secret_key | awk '{print $2}')
+    export AWS_DEFAULT_REGION=us-west-2
+    export JFROG_CLI_LOG_LEVEL=DEBUG
+    echo $AWS_ACCESS_KEY_ID
+    sleep 10
+    aws sts get-caller-identity
+
+    echo "===== GitLab CLI assuming permissions => $DEPLOYMENT_ROLE_NAME ====="
+    KST=(`aws sts assume-role --role-arn $DEPLOYMENT_ROLE --role-session-name "deployment-$CI_JOB_ID" --query '[Credentials.AccessKeyId,Credentials.SecretAccessKey,Credentials.SessionToken]' --output text`)
+    unset AWS_SECURITY_TOKEN
+    export AWS_DEFAULT_REGION=$REGION
+    export AWS_ACCESS_KEY_ID=${KST[0]}
+    export AWS_SECRET_ACCESS_KEY=${KST[1]}
+    export AWS_SESSION_TOKEN=${KST[2]}
+    export AWS_SECURITY_TOKEN=${KST[2]}
+    sleep 10
+    aws sts get-caller-identity
+
+    
+    echo "===== Execute Serverless Deploy ====="
+    serverless deploy --stage $ENV_DEPLOY --region $REGION
+    
+    echo "====== Clean Up after deploying ====="
+    unset AWS_DEFAULT_REGION
+    unset AWS_ACCESS_KEY_ID
+    unset AWS_SECRET_ACCESS_KEY
+    unset AWS_SESSION_TOKEN
+    unset AWS_SECURITY_TOKEN
+
+
+.xray_script: &xray_script
+  script:
+    - echo "===== Install Plugins required ===="
+    - npm i @types/aws-lambda --save-dev
+    - npm install ts-node --save-dev
+    - npm install typescript --save-dev
+    - npm install --save serverless-cloudflare-workers
+    - npm install serverless-deployment-bucket --save-dev    
+    - npm install webpack --save-dev
+    - npm install serverless-webpack --save-dev
+    - npm install serverless-offline --save-dev
+    - npm install serverless-plugin-log-retention --save-dev
+    - npm install serverless-plugin-tracing --save-dev
+    - npm install serverless-prune-plugin --save-dev
+    - npm install serverless-plugin-typescript --save-dev
+    -  serverless --version
+    # Download JFrog CLI
+    - curl -fL https://getcli.jfrog.io | sh
+    # Configure Artifactory instance with JFrog CLI
+    - ./jfrog rt config --url="https://ct-21mm-navi-docker-repo.artifactory.preprod.ctdevops.com/artifactory/" --user=$ARTIFACTORY_USER --password=$ARTIFACTORY_PASS --enc-password=false
+    - ./jfrog rt c show
+    # - ping -c 1 ct-21mm-navi-docker-repo.artifactory.preprod.ctdevops.com | true
+    - ./jfrog rt npmc --server-id-resolve="Default-Server" --server-id-deploy="Default-Server" --repo-resolve="ct-npm" --repo-deploy="npm-local"
+    - ./jfrog rt npmci "ct-npm" --build-name=$CI_PROJECT_NAME --build-number=$CI_JOB_ID
+    # Collect the environment variables 
+    - ./jfrog rt bce $CI_PROJECT_NAME $CI_JOB_ID
+    # Pass the build information to Artifactory
+    - ./jfrog rt npmp --build-name=$CI_PROJECT_NAME --build-number=$CI_JOB_ID
+    - ./jfrog rt bp $CI_PROJECT_NAME $CI_JOB_ID
+    - echo "Starting Indexing"
+    - curl -u $XRAY_USER_PASS -X POST $XRAY_URL/api/v1/binMgr/builds -H "$CONTENT_TYPE" -d '{"names":["'"$CI_PROJECT_NAME"'"]}' -v
+    - echo "Indexing completed"
+    - sleep 5
+    - echo "Creating a Watch"
+    - curl -u $XRAY_USER_PASS -X POST $XRAY_URL/api/v2/watches -H "$CONTENT_TYPE" -d '{"general_data":{"name":"'"$CI_PROJECT_NAME"'","description":"This is a new watch created using API V2","active":true},"project_resources":{"resources":[{"type":"build","bin_mgr_id":"default","name":"'"$CI_PROJECT_NAME"'"}]},"assigned_policies":[{"name":"'"$POLICY_NAME"'","type":"'"$POLICY_TYPE"'"}]}'
+    - echo "Watch creation Completed"
+        # Xray scan
+    - ./jfrog rt bs $CI_PROJECT_NAME $CI_JOB_ID --fail=false
+
+lambda:license-scan:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/ctp21mm-navi-serverless-base-image:0.0.2
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: validate
+  <<: *xray_script
+  variables:
+    <<: *dev_variables
+  allow_failure: false
+  only:
+    - merge_requests
+
+lambda:sonar-scan:
+    image:
+        name: sonarsource/sonar-scanner-cli:latest
+        entrypoint: [""]
+    variables:
+        SONAR_TOKEN: "$SONAR_TOKEN"
+        SONAR_HOST_URL: "$SONAR_HOST"
+        GIT_DEPTH: 0
+    tags:
+    - 21MMk8sjfrog
+    stage: validate
+    only: 
+    - merge_requests
+    script:
+    - echo ""Start Sonar scanning""
+    - npm install typescript --save-dev
+    - npm install 
+    - npm run coverage
+    - sonar-scanner -Dsonar.projectKey=21mm-navi-mapbox-service -Dsonar.qualitygate.wait=true
+    allow_failure: true
+
+deploy-green:dev:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/ctp21mm-navi-serverless-base-image:0.0.2
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: deploy-dev-green
+  <<: *deploy_script
+  variables:
+    DEV_REGION: "us-east-1"
+    REGION: "us-east-1"
+    <<: *dev_variables
+  allow_failure: false
+  only:
+    refs:
+    - dev
+  artifacts:
+    paths:
+        - data/keep-version-us-east-1.txt
+
+deploy-blue:dev:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/ctp21mm-navi-serverless-base-image:0.0.2
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: deploy-dev-blue
+  <<: *deploy_script
+  variables:
+    DEV_REGION: "us-west-2"
+    REGION: "us-west-2"
+    <<: *dev_variables
+  allow_failure: false
+  only:
+    refs:
+    - dev
+  artifacts:
+    paths:
+        - data/keep-version-us-west-2.txt
+    
+sanity-green:dev:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/test-scripts/ctp21mm-navi-jmeter-docker:5.2.1
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  before_script:
+    - mkdir -p ./navi-scripts
+    - rm -rf ./navi-scripts/*
+  stage: sanity-dev-green
+  <<: *sanity_script
+  variables:
+    DEV_REGION: "us-east-1"
+    REGION: "us-east-1"
+    TEST_URL: "otsproxy-env.eba-bpkdagmd.us-east-1.elasticbeanstalk.com/E1"
+    <<: *dev_variables
+  allow_failure: false
+  only:
+    refs:
+    - dev
+  artifacts:
+    paths:
+      - testresults
+
+
+sanity-blue:dev:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/test-scripts/ctp21mm-navi-jmeter-docker:5.2.1
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  before_script:
+    - mkdir -p ./navi-scripts
+    - rm -rf ./navi-scripts/*
+  stage: sanity-dev-blue
+  <<: *sanity_script
+  variables:
+    DEV_REGION: "us-west-2"
+    REGION: "us-west-2"
+    TEST_URL: "otsproxy-env.eba-bpkdagmd.us-east-1.elasticbeanstalk.com"
+    <<: *dev_variables
+  allow_failure: false
+  only:
+    refs:
+    - dev
+  artifacts:
+    paths:
+      - testresults
+
+rollback-blue:dev:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/ctp21mm-navi-serverless-base-image:0.0.2
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: rollback-dev
+  <<: *rollback_script
+  variables:
+    DEV_REGION: "us-west-2"
+    REGION: "us-west-2"
+    <<: *dev_variables
+  when: on_failure
+  only:
+    refs:
+    - dev
+
+rollback-green:dev:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/ctp21mm-navi-serverless-base-image:0.0.2
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: rollback-dev
+  <<: *rollback_script
+  variables:
+    DEV_REGION: "us-east-1"
+    REGION: "us-east-1"
+    <<: *dev_variables
+  when: on_failure
+  only:
+    refs:
+    - dev
+    
+IT:dev:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/test-scripts/ctp21mm-navi-jmeter-docker:5.2.1
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  before_script:
+    - mkdir -p ./navi-scripts
+    - rm -rf ./navi-scripts/*
+  stage: smoke-dev
+  <<: *smoke_script
+  variables:
+    TEST_URL: "navi.dev.connectedtech.io"
+    <<: *dev_variables
+  allow_failure: false
+  only:
+    refs:
+    - dev
+  artifacts:
+    paths:
+      - testresults
+
+deploy-green:qa:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/ctp21mm-navi-serverless-base-image:0.0.2
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: deploy-qa-green
+  <<: *deploy_script
+  variables:
+    QA_REGION: "us-east-1"
+    REGION: "us-east-1"
+    <<: *qa_variables
+  allow_failure: false
+  only:
+    variables:
+      - $DEPLOY_TO == "qa"
+    refs:
+    - /^release.*$/
+  artifacts:
+    paths:
+        - data/keep-version-us-east-1.txt
+
+deploy-blue:qa:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/ctp21mm-navi-serverless-base-image:0.0.2
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: deploy-qa-blue
+  <<: *deploy_script
+  variables:
+    QA_REGION: "us-west-2"
+    REGION: "us-west-2"
+    <<: *qa_variables
+  allow_failure: false
+  only:
+    variables:
+      - $DEPLOY_TO == "qa"
+    refs:
+    - /^release.*$/
+  artifacts:
+    paths:
+        - data/keep-version-us-west-2.txt
+    
+sanity-green:qa:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/test-scripts/ctp21mm-navi-jmeter-docker:5.2.1
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: sanity-qa-green
+  <<: *sanity_script
+  variables:
+    TEST_URL: "qa02proxy-env-2.eba-y28jraeu.us-west-2.elasticbeanstalk.com"
+    QA_REGION: "us-east-1"
+    REGION: "us-east-1"
+    <<: *qa_variables
+  allow_failure: false
+  only:
+    variables:
+      - $DEPLOY_TO == "qa"
+    refs:
+    - /^release.*$/
+
+sanity-blue:qa:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/test-scripts/ctp21mm-navi-jmeter-docker:5.2.1
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: sanity-qa-blue
+  <<: *sanity_script
+  variables:
+    TEST_URL: "qa02proxy-env-2.eba-y28jraeu.us-west-2.elasticbeanstalk.com"
+    QA_REGION: "us-west-2"
+    REGION: "us-west-2"
+    <<: *qa_variables
+  allow_failure: false
+  only:
+    variables:
+      - $DEPLOY_TO == "qa"
+    refs:
+    - /^release.*$/
+
+rollback-blue:qa:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/ctp21mm-navi-serverless-base-image:0.0.2
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: rollback-qa
+  <<: *rollback_script
+  variables:
+    QA_REGION: "us-west-2"
+    REGION: "us-west-2"
+    <<: *qa_variables
+  when: on_failure
+  only:
+    variables:
+      - $DEPLOY_TO == "qa"
+    refs:
+    - /^release.*$/
+
+rollback-green:qa:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/ctp21mm-navi-serverless-base-image:0.0.2
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: rollback-qa
+  <<: *rollback_script
+  variables:
+    QA_REGION: "us-east-1"
+    REGION: "us-east-1"
+    <<: *qa_variables
+  when: on_failure
+  only:
+    variables:
+      - $DEPLOY_TO == "qa"
+    refs:
+    - /^release.*$/
+
+IT:qa:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/test-scripts/ctp21mm-navi-jmeter-docker:5.2.1
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  before_script:
+    - mkdir -p ./navi-scripts
+    - rm -rf ./navi-scripts/*
+  stage: smoke-qa
+  <<: *smoke_script
+  variables:
+    TEST_URL: "navi.stg-if.connectedtech.io"
+    <<: *qa_variables
+  allow_failure: false
+  only:
+    variables:
+      - $DEPLOY_TO == "qa"
+    refs:
+    - /^release.*$/
+  artifacts:
+    paths:
+      - testresults
+
+deploy-green:stg:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/ctp21mm-navi-serverless-base-image:0.0.2
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: deploy-stg-green
+  <<: *deploy_script
+  variables:
+    STG_REGION: "us-east-1"
+    REGION: "us-east-1"
+    <<: *staging_variables
+  allow_failure: false
+  only:
+    variables:
+      - $DEPLOY_TO == "stg"
+    refs:
+    - /^release.*$/
+  artifacts:
+    paths:
+        - data/keep-version-us-east-1.txt
+
+deploy-blue:stg:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/ctp21mm-navi-serverless-base-image:0.0.2
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: deploy-stg-blue
+  <<: *deploy_script
+  variables:
+    STG_REGION: "us-west-2"
+    REGION: "us-west-2"
+    <<: *staging_variables
+  allow_failure: false
+  only:
+    variables:
+      - $DEPLOY_TO == "stg"
+    refs:
+    - /^release.*$/
+  artifacts:
+    paths:
+        - data/keep-version-us-west-2.txt
+    
+sanity-green:stg:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/test-scripts/ctp21mm-navi-jmeter-docker:5.2.1
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  before_script:
+    - mkdir -p ./navi-scripts
+    - rm -rf ./navi-scripts/*
+  stage: sanity-stg-green
+  <<: *sanity_script
+  variables:
+    STG_REGION: "us-east-1"
+    REGION: "us-east-1"
+    TEST_URL: "stg02proxy-env.eba-ck4t6dqp.us-west-2.elasticbeanstalk.com"
+    <<: *staging_variables
+  allow_failure: false
+  only:
+    variables:
+      - $DEPLOY_TO == "stg"
+    refs:
+    - /^release.*$/
+  artifacts:
+    paths:
+      - testresults
+
+sanity-blue:stg:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/test-scripts/ctp21mm-navi-jmeter-docker:5.2.1
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  before_script:
+    - mkdir -p ./navi-scripts
+    - rm -rf ./navi-scripts/*
+  stage: sanity-stg-blue
+  <<: *sanity_script
+  variables:
+    STG_REGION: "us-west-2"
+    REGION: "us-west-2"
+    TEST_URL: "stg02proxy-env.eba-ck4t6dqp.us-west-2.elasticbeanstalk.com"
+    <<: *staging_variables
+  allow_failure: false
+  only:
+    variables:
+      - $DEPLOY_TO == "stg"
+    refs:
+    - /^release.*$/
+  artifacts:
+    paths:
+      - testresults
+
+rollback-blue:stg:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/ctp21mm-navi-serverless-base-image:0.0.2
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: rollback-stg
+  <<: *rollback_script
+  variables:
+    STG_REGION: "us-west-2"
+    REGION: "us-west-2"
+    <<: *staging_variables
+  when: on_failure
+  only:
+    variables:
+      - $DEPLOY_TO == "stg"
+    refs:
+    - /^release.*$/
+
+rollback-green:stg:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/ctp21mm-navi-serverless-base-image:0.0.2
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: rollback-stg
+  <<: *rollback_script
+  variables:
+    STG_REGION: "us-east-1"
+    REGION: "us-east-1"
+    <<: *staging_variables
+  when: on_failure
+  only:
+    variables:
+      - $DEPLOY_TO == "stg"
+    refs:
+    - /^release.*$/
+
+IT:stg:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/test-scripts/ctp21mm-navi-jmeter-docker:5.2.1
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  before_script:
+    - mkdir -p ./navi-scripts
+    - rm -rf ./navi-scripts/*
+  stage: smoke-stg
+  <<: *smoke_script
+  variables:
+    TEST_URL: "navi.stg.connectedtech.io"
+    <<: *staging_variables
+  allow_failure: false
+  only:
+    variables:
+      - $DEPLOY_TO == "stg"
+    refs:
+    - /^release.*$/
+  artifacts:
+    paths:
+      - testresults
+
+deploy-green:prod:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/ctp21mm-navi-serverless-base-image:0.0.2
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: deploy-prod-green
+  <<: *deploy_script
+  variables:
+    PROD_REGION: "us-east-1"
+    REGION: "us-east-1"
+    <<: *prod_variables
+  allow_failure: false
+  only:
+    variables:
+      - $DEPLOY_TO == "prod"
+    refs:
+    - /^release.*$/
+  artifacts:
+    paths:
+        - data/keep-version-us-east-1.txt
+
+deploy-blue:prod:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/ctp21mm-navi-serverless-base-image:0.0.2
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: deploy-prod-blue
+  <<: *deploy_script
+  variables:
+    PROD_REGION: "us-west-2"
+    REGION: "us-west-2"
+    <<: *prod_variables
+  allow_failure: false
+  only:
+    variables:
+      - $DEPLOY_TO == "prod"
+    refs:
+    - /^release.*$/
+  artifacts:
+    paths:
+        - data/keep-version-us-west-2.txt
+    
+sanity-green:prod:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/test-scripts/ctp21mm-navi-jmeter-docker:5.2.1
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  before_script:
+    - mkdir -p ./navi-scripts
+    - rm -rf ./navi-scripts/*
+  stage: sanity-prod-green
+  <<: *sanity_script
+  variables:
+    PROD_REGION: "us-east-1"
+    TEST_URL: "prod02proxy-env.eba-ck4t6dqp.us-west-2.elasticbeanstalk.com"
+    <<: *prod_variables
+  allow_failure: false
+  only:
+    variables:
+      - $DEPLOY_TO == "prod"
+    refs:
+    - /^release.*$/
+  artifacts:
+    paths:
+      - testresults
+
+sanity-blue:prod:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/test-scripts/ctp21mm-navi-jmeter-docker:5.2.1
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  before_script:
+    - mkdir -p ./navi-scripts
+    - rm -rf ./navi-scripts/*
+  stage: sanity-prod-blue
+  <<: *sanity_script
+  variables:
+    PROD_REGION: "us-west-2"
+    TEST_URL: "prod02proxy-env.eba-ck4t6dqp.us-west-2.elasticbeanstalk.com"
+    <<: *prod_variables
+  allow_failure: false
+  only:
+    variables:
+      - $DEPLOY_TO == "prod"
+    refs:
+    - /^release.*$/
+  artifacts:
+    paths:
+      - testresults
+
+rollback-blue:prod:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/ctp21mm-navi-serverless-base-image:0.0.2
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: rollback-prod
+  <<: *rollback_script
+  variables:
+    PROD_REGION: "us-west-2"
+    <<: *prod_variables
+  when: on_failure
+  only:
+    variables:
+      - $DEPLOY_TO == "prod"
+    refs:
+    - /^release.*$/
+
+rollback-green:prod:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/ctp21mm-navi-serverless-base-image:0.0.2
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  stage: rollback-prod
+  <<: *rollback_script
+  variables:
+    PROD_REGION: "us-east-1"
+    <<: *prod_variables
+  when: on_failure
+  only:
+    variables:
+      - $DEPLOY_TO == "prod"
+    refs:
+    - /^release.*$/
+
+IT:prod:
+  image:
+    name: registry.toyotaconnected.net/tmna-ct/navigation/test-scripts/ctp21mm-navi-jmeter-docker:5.2.1
+    entrypoint: [""]
+  tags:
+  - 21MMk8sjfrog
+  before_script:
+    - mkdir -p ./navi-scripts
+    - rm -rf ./navi-scripts/*
+  stage: smoke-prod
+  <<: *smoke_script
+  variables:
+    TEST_URL: "navi.prod.connectedtech.io"
+    <<: *prod_variables
+  allow_failure: false
+  only:
+    variables:
+      - $DEPLOY_TO == "prod"
+    refs:
+    - /^release.*$/
+  artifacts:
+    paths:
+      - testresults

@@ -1,0 +1,6 @@
+extends ../layouts/admin/app.pug 
+block contant
+        form(action="/admin/input", method="post") 
+            input(type="text" name="name" placeholder="Name" required)
+            input(type="email" name="email" placeholder="Email" required)
+            button(type="submit"  name="Submit") Submit   

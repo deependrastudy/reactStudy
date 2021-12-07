@@ -1,0 +1,26 @@
+.header{
+    width: 100%;
+    min-height: 50px;
+}
+ul{
+    width: 100%;
+}
+ul > li{
+    list-style: none;
+    float: left;
+    width: 50%;
+    height: 50px;
+    line-height: 50px;
+}
+ul li a {
+    text-decoration: none;
+    color: red;
+}
+.userslist{
+    width: 100%;
+}
+.userslist>tbody>tr>td{
+    text-align: center;
+    height: 50px;
+    line-height: 50px;
+}

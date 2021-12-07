@@ -1,0 +1,51 @@
+# AWS account ID of the environment
+account-id: 288697431441
+
+
+# Log Retention days in Cloudwatch
+log-retention: 30
+
+#Security groups for the functions
+securityGroupIds:
+  - sg-082af449adc818dbb
+
+#VPC APP subnet under which function should run
+subnetIds:
+  - subnet-04ea26264c11bc187
+  - subnet-03eefb9c295ef51f1
+
+restApiId: d71slwlwkj
+
+restApiRootResourceId: 5tm3sniln9
+
+#restApiResourceID: 5va5wu
+
+#stylenameRestApiResourceID: 1n89ak
+
+#versionRestApiResourceID: zaiukb
+
+#envRestApiResourceID: ovrx82
+
+ddKey: 9c65739f61541f5fe6ce074f58b2f17c
+
+# All environment variables should go in here
+# Standard fields  
+#   - CTP-ENV	
+#  - CTP-REGION
+#  - LOGGER_LEVEL
+# Optional fields
+#  - CTP-APP-SECRET
+# All app specific env variables can go here e.g. TOMTOM_ENDPOINT
+env-vars:
+  APP_ENVIRONMENT: dev02
+  REGION: us-east-1
+  LOGGER_LEVEL: debug
+  CLOUD_WATCH_LOG_GROUP_NAME : /aws/lambda/dev02-us-east-1-navi-mapbox-service-audit
+  MAPBOX_ENDPOINT: https://api.mapbox.com/tokens/v2/
+  MAPBOX_ACCOUNT_TABLE : dev02-global-navi-admin-mapbox-account
+  MAP_STYLE_INFO_TABLE : dev02-global-navi-admin-map-style-info
+  MAPBOX_STYLE_ENDPOINT : https://api.mapbox.com/styles/v1/
+  MAPBOX_FONTS_ENDPOINT : https://api.mapbox.com/fonts/v1/
+  MAP_STYLE_VERSIONS_S3_CUCKET : ctp21mm-navi-adminportal-map-style
+  JOB_STATUS_LAMBDA_ARN : arn:aws:lambda:us-east-1:288697431441:function:dev02-us-east-1-navi-admin-job-status-updateJobStatus
+  GET_MAPBOX_ACCOUNTS_FUNCTION_NAME : dev02-us-east-1-navi-admin-mapbox-account-getMapboxAccounts

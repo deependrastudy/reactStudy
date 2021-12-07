@@ -1,0 +1,585 @@
+{
+    "openapi": "3.0.1",
+    "info": {
+      "title": "21MM CTP Admin Portal - Backend API Specification",
+      "description": "Draft version - Admin Portal backend APIs\n<li>Mapbox Account Management APIs</li>\n<li>Mapbox Style Management APIs</li>\n<li>Map Data Copy APIs</li>\n<li>Audit Trail APIs</li>\n<li>Workflow Status APIs</li>\n</ul>\n",
+      "version": "0.0.1"
+    },
+    "servers": [
+      {
+        "url": "http://"
+      }
+    ],
+    "paths": {
+      "/hugroute/services/routetable": {
+        "get": {
+          "tags": [
+            "Sever routing"
+          ],
+          "summary": "Gets the routetable in each region for a service",
+          "parameters": [],
+          "responses": {
+            "200": {
+              "description": "Created - The request has succeeded and a new resource has been created as a result.",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/routing"
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Bad Request - The server could not understand the request due to invalid syntax."
+            },
+            "500": {
+              "description": "Internal Server Error"
+            },
+            "502": {
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "description": "Service Unavailable"
+            },
+            "504": {
+              "description": "Gateway Timeout"
+            }
+          }
+        }
+      },
+      "/hugroute/services/routetable/{servicename}": {
+        "patch": {
+          "tags": [
+            "Sever routing"
+          ],
+          "summary": "Gets the single routetable for a service",
+          "parameters": [ ],
+          "requestBody": {
+            "description": "GEt routing information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/routingbody"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "202": {
+              "description": "Created - The request have been accepted for processing,."
+            },
+            "400": {
+              "description": "Bad Request - The server could not understand the request due to invalid syntax."
+            },
+            "404": {
+              "description": "Not Found - Requested resource is not available"
+            },
+            "500": {
+              "description": "Internal Server Error"
+            },
+            "504": {
+              "description": "Gateway Timeout"
+            }
+          }
+        }
+      }
+    },
+    "components": {
+      "securitySchemes": {
+        "bearerAuth": {
+          "type": "http",
+          "scheme": "bearer",
+          "bearerFormat": "JWT"
+        }
+      },
+      "schemas": {
+        "style": {
+          "type": "object",
+          "required": [
+            "label"
+          ],
+          "properties": {
+            "styleName": {
+              "type": "string"
+            },
+            "styleId": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "repoPath": {
+              "type": "string"
+            },
+            "publishedTo": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "env": {
+                    "type": "string"
+                  },
+                  "styleId": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "createdBy": {
+              "type": "string"
+            },
+            "lastModifiedBy": {
+              "type": "string"
+            },
+            "createdOn": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "lastModifiedOn": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        },
+        "schedule": {
+          "type": "object",
+          "required": [
+            "schedule"
+          ],
+          "properties": {
+            "schedule": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "region": {
+              "type": "string"
+            }
+          }
+        },
+        "capacitybody": {
+          "type": "object",
+          "properties": {
+            "servicename": {
+              "type": "string"
+            },
+            "tps": {
+              "type": "integer"
+            },
+            "serverregion": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "region": {
+                    "type": "string"
+                  },
+                  "servercount": {
+                    "type": "object",
+                    "properties": {
+                      "target": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "capacity": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "servicename": {
+                "type": "string"
+              },
+              "serverregion": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "region": {
+                      "type": "string"
+                    },
+                    "isDR": {
+                      "type": "boolean"
+                    },
+                    "servercount": {
+                      "type": "object",
+                      "properties": {
+                        "desired": {
+                          "type": "string"
+                        },
+                        "current": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "capacityThroughput": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "servicename": {
+                "type": "string"
+              },
+              "tps": {
+                "type": "string"
+              },
+              "serversneeded": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "routing": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "servicename": {
+              "type": "string"
+            },
+            "region": {
+              "type": "string"
+            },
+            "ttl": {
+              "type": "integer"
+            },
+            "isDR": {
+              "type": "boolean"
+            },
+            "integrationdesired": {
+              "type": "object",
+              "properties": {
+                "primary": {
+                  "type": "string"
+                },
+                "failover": {
+                  "type": "string"
+                }
+              }
+            },
+            "inetgrationcurrent": {
+              "type": "object",
+              "properties": {
+                "primary": {
+                  "type": "string"
+                },
+                "failover": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+        },
+        "routingbody": {
+          "type": "object",
+          "properties": {
+            "servicename": {
+              "type": "string"
+            },
+            "region": {
+              "type": "string"
+            },
+            "inetgrationcurrent": {
+              "type": "object",
+              "properties": {
+                "primary": {
+                  "type": "string"
+                },
+                "failover": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "edgerouting": {
+          "type": "object",
+          "properties": {
+            "dnsname": {
+              "type": "string"
+            },
+            "dnsdomain": {
+              "type": "string"
+            },
+            "integration": {
+              "type": "string"
+            }
+          }
+        },
+        "map-data": {
+          "type": "object",
+          "required": [
+            "key",
+            "version",
+            "manifest"
+          ],
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "region": {
+              "type": "string",
+              "enum": [
+                "US-EAST-1",
+                "US-WEST-2",
+                "US-EAST-2",
+                "US-WEST-1"
+              ]
+            },
+            "servergroup": {
+              "type": "string"
+            },
+            "manifest": {
+              "type": "object",
+              "properties": {
+                "mapData": {
+                  "type": "string"
+                },
+                "downloadData": {
+                  "type": "string"
+                }
+              }
+            },
+            "copyStatus": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "COMPLETED",
+                "FAILED"
+              ]
+            },
+            "publishStatus": {
+              "type": "string",
+              "enum": [
+                "OFF",
+                "SCHEDULED",
+                "INPROGRESS",
+                "ON"
+              ]
+            },
+            "publishSchedule": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "publishLog": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "startTime": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "endTime": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "triggeredBy": {
+                    "type": "string"
+                  },
+                  "activities": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "stageName": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "boolean"
+                        },
+                        "startTime": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "endTime": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "createdLog": {
+              "type": "object",
+              "properties": {
+                "startTime": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "endTime": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "triggeredBy": {
+                  "type": "string"
+                },
+                "activities": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "stageName": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "boolean"
+                      },
+                      "startTime": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "endTime": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "audit-log": {
+          "type": "object",
+          "properties": {
+            "entity": {
+              "type": "string"
+            },
+            "action": {
+              "type": "string"
+            },
+            "who": {
+              "type": "object",
+              "properties": {
+                "user": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                }
+              }
+            },
+            "when": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "oldValue": {
+              "type": "object"
+            },
+            "newValue": {
+              "type": "object"
+            }
+          }
+        },
+        "job-status": {
+          "type": "object",
+          "properties": {
+            "jobName": {
+              "type": "string",
+              "enum": [
+                "createStyle",
+                "publishStyle",
+                "mapDatacopy",
+                "mapDataSwitch"
+              ]
+            },
+            "jobId": {
+              "type": "string"
+            },
+            "jobStatus": {
+              "type": "string",
+              "enum": [
+                "Scheduled",
+                "In Progress",
+                "Completed",
+                "Failed"
+              ]
+            },
+            "jobData": {
+              "type": "string"
+            },
+            "stages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "stageName": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "startTime": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "endTime": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              }
+            },
+            "startTime": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "endTime": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "triggeredBy": {
+              "type": "string"
+            }
+          }
+        },
+        "job-stage": {
+          "type": "object",
+          "properties": {
+            "jobName": {
+              "type": "string",
+              "enum": [
+                "createStyle",
+                "publishStyle",
+                "mapDatacopy",
+                "mapDataSwitch"
+              ]
+            },
+            "stageList": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
