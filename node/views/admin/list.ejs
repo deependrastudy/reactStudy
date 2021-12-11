@@ -1,0 +1,19 @@
+<%- include('../layouts/admin/header.ejs') %>
+  <table class="userslist">
+      <tr>
+          <td>Name</td>
+          <td>Email</td>
+      </tr>
+      <% if(items.length>0) { %>
+      <% for(item of items) { %>
+      <tr>
+          <td><%= item.name %></td>
+          <td><%= item.email %></td>
+      </tr>
+      <% } } else { %>
+      <tr>
+          <td colspan="2">Not Record Found</td>
+      </tr>
+      <% } %>
+  </table>
+<%- include('../layouts/admin/footer.ejs'); %>

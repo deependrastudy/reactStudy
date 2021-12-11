@@ -1,0 +1,22 @@
+
+<h2>List Here</h2>
+<table class="userslist">
+    <tr>
+        <td>Name</td>
+        <td>Email</td>
+    </tr>
+    {{#if dataState}}
+    {{#each items}}
+    <tr>
+        <td>{{ this.name }}</td>
+        <td>{{ this.email }}</td>
+    </tr>
+    {{/each}}
+    {{else}}
+    <tr>
+        <td colspan="2">
+            <p>User Not Found</p>
+        </td>
+    </tr>
+    {{/if}}
+</table>
